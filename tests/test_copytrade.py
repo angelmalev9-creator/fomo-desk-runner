@@ -21,6 +21,7 @@ from copytrade import FOMO_SIGNER, USDC_MINT, parse_fomo_trade
 from telegram import TelegramNotifier
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 OWNER = 7659480276
 STRANGER = 111222333
 W = "FG4c1qnq8vEc9nn6uxmtWVjWZLE9rxTfeExBYh5GQnRb"
@@ -59,7 +60,7 @@ def test_parse_buy_and_sell():
 def test_parse_rejects_non_fomo_failed_and_transfers():
     assert parse_fomo_trade(tx(signer="SomeOtherSigner1111111111111111111111111111"), W) is None
     assert parse_fomo_trade(tx(err={"x": 1}), W) is None
-    raw = json.loads((ROOT / "logs/raw/wallet_tx_raw_zelda89.json").read_text())
+    raw = json.loads((FIXTURES / "wallet_tx_raw_zelda89.json").read_text())
     assert parse_fomo_trade(raw["tx"], W, raw["signature"]) is None  # USDC withdrawal, not a trade
 
 
@@ -112,7 +113,7 @@ def test_gentle_rpc_backs_off_on_429():
 
 # ------------------------------------------------------------ backtest
 def test_backtest_zelda89_partial_data():
-    rep = backtest.run("/nonexistent/x.db", [ROOT / "logs/raw/wallet_history_zelda89.json"])
+    rep = backtest.run("/nonexistent/x.db", [FIXTURES / "wallet_history_zelda89.json"])
     a = rep["A_follow_trader"]["total"]
     assert a["buys"] == 3 and a["invested"] == 30.0
     assert a["pnl"] < -20  # zelda89 sold HNxy ~-90%: copy loses too

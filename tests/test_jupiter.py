@@ -20,9 +20,9 @@ from fields import (
 )
 from sources import maybe_note_jup_price
 
-RAW = Path(__file__).resolve().parents[1] / "logs" / "raw"
-PRICE_SAMPLE = json.loads((RAW / "jupiter_price.json").read_text())
-TOKEN_SAMPLE = json.loads((RAW / "jupiter_token_search.json").read_text())
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+PRICE_SAMPLE = json.loads((FIXTURES / "jupiter_price.json").read_text())
+TOKEN_SAMPLE = json.loads((FIXTURES / "jupiter_token_search.json").read_text())
 
 
 def _scanner():

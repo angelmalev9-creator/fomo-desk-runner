@@ -17,7 +17,11 @@ FOMO_SIGNER = "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51"
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 # getTransaction must carry maxSupportedTransactionVersion or v0 txs fail with -32015.
 TX_OPTS = {"maxSupportedTransactionVersion": 1, "encoding": "jsonParsed", "commitment": "confirmed"}
-WALLETS_PATH = ROOT / "logs" / "raw" / "fomo_wallets.json"
+# Committed public seed (FOMO handles/wallets). Fall back to the historical
+# logs/raw path so a local box checkout that still keeps samples there works.
+_WALLETS_DATA = ROOT / "data" / "fomo_wallets.json"
+_WALLETS_LOGS = ROOT / "logs" / "raw" / "fomo_wallets.json"
+WALLETS_PATH = _WALLETS_DATA if _WALLETS_DATA.is_file() else _WALLETS_LOGS
 HISTORY_DB = ROOT / "copy_history.db"
 
 DEFAULTS: dict[str, Any] = {
@@ -226,7 +230,7 @@ def sell_fraction(trade: dict) -> float:
 
 
 def load_seed_wallets(path: Path | None = None) -> dict[str, str]:
-    """handle -> wallet from logs/raw/fomo_wallets.json."""
+    """handle -> wallet from data/fomo_wallets.json (or logs/raw fallback)."""
     p = path or WALLETS_PATH
     try:
         data = json.loads(p.read_text(encoding="utf-8"))

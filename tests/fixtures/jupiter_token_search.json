@@ -1,0 +1,87 @@
+[
+  {
+    "id": "HYoM6KGcYhghx8zMRrU4DJT9xWrNn4jwGDGnDpFhpump",
+    "name": "Trump 1",
+    "symbol": "Trump",
+    "icon": "https://lz4iraiwp5ifhidif2ros6wqd3rymjghvfgqwg5kd6urcqsra5ka.turbo-gateway.com/XniIgRZ_UFOgaC6i6XrQHuOGJMepTQsbqh-pEUJRB1Q?ext=webp",
+    "decimals": 6,
+    "twitter": "https://x.com/TrenchingView/status/2115698083379941635",
+    "dev": "AkePN95eVn5hMwyHkv4tS7qsP9Pe8PWkTyDS77gCRokH",
+    "circSupply": 991436204.43,
+    "totalSupply": 991436204.43,
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "launchpad": "pump.fun",
+    "graduatedPool": "2JqLZHJyuoPGTYCoVRackVXn15C23UTAjf6F1yQ62xoJ",
+    "graduatedAt": "2026-11-10T10:21:09Z",
+    "holderCount": 2138,
+    "fdv": 92864.86328590961,
+    "mcap": 92864.86328590961,
+    "usdPrice": 9.36670083974791e-05,
+    "priceBlockId": 467685722,
+    "liquidity": 10339.942465224349,
+    "stats5m": {
+      "priceChange": -8.575940050130118,
+      "holderChange": 1157.6470588235293,
+      "liquidityChange": 2.1682130161892057,
+      "buyVolume": 13833.165925661973,
+      "sellVolume": 2761.4308410537064,
+      "numBuys": 1767,
+      "numSells": 1497,
+      "numTraders": 139,
+      "numNetBuyers": 137
+    },
+    "stats1h": {
+      "priceChange": -8.575940050130118,
+      "holderChange": 1157.6470588235293,
+      "liquidityChange": 2.1682130161892057,
+      "buyVolume": 13833.165925661973,
+      "sellVolume": 2761.4308410537064,
+      "numBuys": 1767,
+      "numSells": 1497,
+      "numTraders": 139,
+      "numNetBuyers": 137
+    },
+    "stats6h": {
+      "priceChange": -8.575940050130118,
+      "holderChange": 1157.6470588235293,
+      "liquidityChange": 2.1682130161892057,
+      "buyVolume": 13833.165925661973,
+      "sellVolume": 2761.4308410537064,
+      "numBuys": 1767,
+      "numSells": 1497,
+      "numTraders": 139,
+      "numNetBuyers": 137
+    },
+    "stats24h": {
+      "priceChange": -8.575940050130118,
+      "holderChange": 1157.6470588235293,
+      "liquidityChange": 2.1682130161892057,
+      "buyVolume": 13833.165925661973,
+      "sellVolume": 2761.4308410537064,
+      "numBuys": 1767,
+      "numSells": 1497,
+      "numTraders": 139,
+      "numNetBuyers": 137
+    },
+    "firstPool": {
+      "id": "HYoM6KGcYhghx8zMRrU4DJT9xWrNn4jwGDGnDpFhpump",
+      "createdAt": "2026-11-10T10:21:09Z"
+    },
+    "audit": {
+      "mintAuthorityDisabled": true,
+      "freezeAuthorityDisabled": true,
+      "topHoldersPercentage": 25.851571302393378,
+      "devBalancePercentage": 0.17785838976566254,
+      "devMigrations": 2,
+      "devMints": 4
+    },
+    "organicScore": 0,
+    "organicScoreLabel": "low",
+    "tags": [
+      "unknown",
+      "token-2022"
+    ],
+    "createdAt": "2026-11-10T10:21:09Z",
+    "updatedAt": "2026-11-10T10:24:15.060173706Z"
+  }
+]

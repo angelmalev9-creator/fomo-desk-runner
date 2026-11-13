@@ -1,0 +1,72 @@
+{
+ "source": "fomowalletfinder.com public lookup (GET /api/resolve?handle= and its public '/cielo/<handle>/sol' button redirect); verified on-chain via public Solana RPC: trades co-signed by FOMO signer AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51",
+ "checked_local": "2026-11-11 21:10 Europe/Sofia",
+ "not_resolved": [
+  "tikitikitreader"
+ ],
+ "wallets": {
+  "G41T3R98": {
+   "wallet": "4t5cayg6FDWkyQwyuYq9DqcRRCQ7e6JXyf9J7f2wfZQW",
+   "sigs_30d": 144,
+   "capped": false,
+   "last_tx_local": "2026-11-10T23:09:30",
+   "latest_tx_cosigned_by_fomo": true
+  },
+  "bystevenr": {
+   "wallet": "AH75Bn6QHSt5K2Ad4p1otns3JTwpSJWZTwiwKWNhmnKx",
+   "sigs_30d": 4062,
+   "capped": true,
+   "last_tx_local": "2026-11-11T21:12:20",
+   "latest_tx_cosigned_by_fomo": true
+  },
+  "awtorkowski7": {
+   "wallet": "7zs3Cda5C8XWadmFKKfuPyXpo78F5AFY6RXQ3Ec5p9k7",
+   "sigs_30d": 209,
+   "capped": false,
+   "last_tx_local": "2026-11-11T20:27:35",
+   "latest_tx_cosigned_by_fomo": true
+  },
+  "jusatrades": {
+   "wallet": "3GVsTbR5KL4voNTC5Q9G1gaUMfcJ7pZCj8SZ8HybmdhY",
+   "sigs_30d": 363,
+   "capped": false,
+   "last_tx_local": "2026-11-10T23:47:15",
+   "latest_tx_cosigned_by_fomo": false
+  },
+  "vvvvvvvvvv": {
+   "wallet": "4Bc4Ue2G37zoQCiksAvwMgXQQJFKcYQThnoHPKizAmWB",
+   "sigs_30d": 2887,
+   "capped": false,
+   "last_tx_local": "2026-11-11T21:09:53",
+   "latest_tx_cosigned_by_fomo": false
+  },
+  "escobarpablo": {
+   "wallet": "6MsBTRvTtmXyHSQNSr7poB6ChhMKtS3AuG98Wg5fEh4o",
+   "sigs_30d": 168,
+   "capped": false,
+   "last_tx_local": "2026-11-10T21:24:03",
+   "latest_tx_cosigned_by_fomo": false
+  },
+  "SavageCountry": {
+   "wallet": "CdMRJEA33ee3JsLjMNkc9LohTkczSpom63vkyRu988qa",
+   "sigs_30d": 1266,
+   "capped": false,
+   "last_tx_local": "2026-11-11T21:09:58",
+   "latest_tx_cosigned_by_fomo": false
+  },
+  "zelda89": {
+   "wallet": "FG4c1qnq8vEc9nn6uxmtWVjWZLE9rxTfeExBYh5GQnRb",
+   "sigs_30d": 133,
+   "capped": false,
+   "last_tx_local": "2026-11-11T16:28:59",
+   "latest_tx_cosigned_by_fomo": true
+  },
+  "OinkersRUs": {
+   "wallet": "DPAN2Vig8BokpQCCu4mtV1mTWYLS7ktKe1hHKVBcsayL",
+   "sigs_30d": 2153,
+   "capped": false,
+   "last_tx_local": "2026-11-11T21:06:17",
+   "latest_tx_cosigned_by_fomo": false
+  }
+ }
+}

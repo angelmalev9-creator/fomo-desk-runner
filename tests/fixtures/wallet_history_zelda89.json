@@ -1,0 +1,92 @@
+{
+ "handle": "zelda89",
+ "wallet": "FG4c1qnq8vEc9nn6uxmtWVjWZLE9rxTfeExBYh5GQnRb",
+ "source": "public Solana RPC getSignaturesForAddress+getTransaction (jsonParsed, maxSupportedTransactionVersion=1)",
+ "method": "FOMO trade = tx co-signed by FOMO signer AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51; side/amount/price from owner's USDC and token balance deltas",
+ "window_days": 30,
+ "signatures_30d": 133,
+ "non_trade_or_unparsed": 124,
+ "trades": [
+  {
+   "time_utc": "2026-11-08T21:02:00+00:00",
+   "signature": "JvVqkSaBvcY3KVknihMNmeGvawb96Q3NobxaL4nqfezUw4JTH2Y5ECRHdYKBYghUBUAcbTm4QziErYHVQmCTvMB",
+   "mint": "XspzcW1PRtgf6Wj92HCiZdjzKCyFekVD8P5Ueh3dRMX",
+   "side": "sell",
+   "token_amount": 0.00098916,
+   "usdc": 0.42711899999999936,
+   "price_usd": 431.7997088438669
+  },
+  {
+   "time_utc": "2026-11-04T14:23:21+00:00",
+   "signature": "qQiCrovUiW5jyeXojmcy2PLd7TgqVjraAHxGYpDHSvJ5LBXnCMUwptswun9T72n4pTogGm5a244NBmzS8K6dnKo",
+   "mint": "4DV2FsyBjowCbFtbhFdv9u3EuUFDZK2ZEMFVodE3pump",
+   "side": "sell",
+   "token_amount": 20000.0,
+   "usdc": 2.728632000000001,
+   "price_usd": 0.00013643160000000005
+  },
+  {
+   "time_utc": "2026-11-01T21:30:58+00:00",
+   "signature": "4wsrMg3PnTHAh2JA51fYMjUTiGgtWE1NZ3Tw3DXKFF4vZkoc2gQnoGPNUBgEpQz7v1C6KALEvSHubFH59gkKR327",
+   "mint": "HNxyGpz8AkLqmfBBKMzmugkPE5Bahj2bGPPTNgWGpump",
+   "side": "sell",
+   "token_amount": 1727934.70922,
+   "usdc": 27.256552,
+   "price_usd": 1.5774063600067255e-05
+  },
+  {
+   "time_utc": "2026-11-01T20:52:43+00:00",
+   "signature": "4sw7fr75SBZuXcKzwXohAc6dkKYvA1BzFi2771mbNQf56z1rab9Vngss9d2fCauo3PFkXXzS6iuGs1PGMD1J1QSG",
+   "mint": "HNxyGpz8AkLqmfBBKMzmugkPE5Bahj2bGPPTNgWGpump",
+   "side": "buy",
+   "token_amount": 455567.8777950001,
+   "usdc": 50.0,
+   "price_usd": 0.00010975312886853577
+  },
+  {
+   "time_utc": "2026-11-01T20:30:42+00:00",
+   "signature": "56zP9hVYLvn9gJJZvLH7AvP8MmWKsFbYKi5Df8rNtnMxLiVkSJgL3VkVE7zx8DtdYkffBDsvwPUyUYkpD9tUkqEC",
+   "mint": "HNxyGpz8AkLqmfBBKMzmugkPE5Bahj2bGPPTNgWGpump",
+   "side": "buy",
+   "token_amount": 647136.771097,
+   "usdc": 100.0,
+   "price_usd": 0.00015452683955894525
+  },
+  {
+   "time_utc": "2026-11-01T20:28:18+00:00",
+   "signature": "2JVKD3U1x3JLYJaj6uRd968s1VTxASG9L7tQw5S5NfyFCrLeHvQRkzr4wJA3ALFxt1y4RqtB3pE6UpAVBeejg2bW",
+   "mint": "HNxyGpz8AkLqmfBBKMzmugkPE5Bahj2bGPPTNgWGpump",
+   "side": "buy",
+   "token_amount": 625230.060328,
+   "usdc": 100.00000000000006,
+   "price_usd": 0.00015994112622726324
+  },
+  {
+   "time_utc": "2026-11-01T15:14:18+00:00",
+   "signature": "2oqypW5gTybZ1kAZTv5kyGN4qzJxzyfoU82gMb2bgYMfwCuHcFj32GMFiWbHDTbZ66PaUxzCvgroA4fV3g6Jcu2N",
+   "mint": "HsprHxBRgiVaQdRf3TnKNuZZtaX9JUSPgMFdAkk6pump",
+   "side": "sell",
+   "token_amount": 282.965478,
+   "usdc": 2.012215999999995,
+   "price_usd": 0.007111171349319138
+  },
+  {
+   "time_utc": "2026-10-27T13:44:06+00:00",
+   "signature": "4jFwDBzjJ4HBBJdJYPopZFDerGe8Fv5q3qrLLeS5Yygxj3Hxx6bXQv4F5Y2QYx2T38j6xd4PRtt5VydHCWngoB5v",
+   "mint": "AqmPAcCeriGA6TAq2ZUsowAeWcktZ7VVrYsjAA1zpump",
+   "side": "sell",
+   "token_amount": 100000.0,
+   "usdc": 15.495396,
+   "price_usd": 0.00015495396
+  },
+  {
+   "time_utc": "2026-10-18T22:32:57+00:00",
+   "signature": "89mz1DDKk1u5zGxJf1kLPMb13w432feJZC8PB2SVXmpQbdqnFkeUeXK3TNfGAjQ2YhncZGfBVAPqRiTt4yqKtpd",
+   "mint": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+   "side": "sell",
+   "token_amount": 5.738501,
+   "usdc": 9.652398000000005,
+   "price_usd": 1.6820417039223317
+  }
+ ]
+}
