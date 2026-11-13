@@ -1,0 +1,26 @@
+name: desk-watchdog
+
+# Backup kick if the 6h job dies without self-dispatching. Does nothing when a
+# desk run is already in progress or queued (see ci/kick.py).
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  kick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dispatch desk.yml if not already running
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python ci/kick.py

@@ -1,0 +1,10 @@
+# Overnight 30-day copy-trade history fetch (public Solana RPC, read-only, no secrets needed).
+# Resumes from copy_history.db checkpoints; nothing is lost on a box freeze or kill.
+# Restart only if it is not running:
+cd /workspace/desk
+if [ -f logs/history_fetch.pid ] && kill -0 "$(cat logs/history_fetch.pid)" 2>/dev/null; then echo "already running"; else
+  nohup ./run_history_fetch.sh >> logs/history_fetch.out 2>&1 &
+  echo $!
+fi
+# Progress:  .venv/bin/python history_fetch.py --status
+# Log:       tail -f logs/history_fetch.log

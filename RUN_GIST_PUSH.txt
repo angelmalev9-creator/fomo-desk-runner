@@ -1,0 +1,8 @@
+# Restart gist_push if it is not running.
+# Requires GITHUB_TOKEN in the environment (do not write the token into this file).
+# GIST_ID is read from /workspace/desk/gist_config.json.
+
+cd /workspace/desk
+mkdir -p logs
+nohup .venv/bin/python gist_push.py >> logs/gist_push.log 2>&1 &
+echo $!

@@ -1,0 +1,47 @@
+# Secrets and credentials — never commit
+.secrets
+.secrets.*
+.env
+.env.*
+.github_token
+*.pem
+*.key
+
+# Local / box-only config that may contain tokens
+gist_config.json
+actions_state.json
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.python-version
+
+# Desk state (lives in a private state gist + Actions artifacts, not in git)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+desk-backup.db.gz
+desk-backup.db.gz.b64
+copy_history.db*
+
+# Runtime output
+logs/
+shots/
+*.log
+*.out
+
+# Backups and editor junk
+*.bak
+*.bak[0-9]
+*.bak[0-9][0-9]
+*~
+*.swp
+.DS_Store
+backups/
+/tmp/

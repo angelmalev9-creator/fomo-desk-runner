@@ -1,0 +1,67 @@
+name: desk
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: fomo-desk
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+  # Public dashboard gist id (already on the GitHub Pages board). Not a secret.
+  GIST_ID: a0a0fb0359242e037204492b92ba7ef0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Test suite
+        run: python -m pytest tests/ -q --tb=short
+
+  desk:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      TG_TOKEN: ${{ secrets.TG_TOKEN }}
+      JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
+      APP_TOKEN: ${{ secrets.APP_TOKEN }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+      STATE_GIST_ID: ${{ secrets.STATE_GIST_ID }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Restore desk.db from private state gist
+        run: python ci/state.py restore
+      - name: Run PAPER desk (stop at 5h45, then self-dispatch)
+        run: python ci/run_desk.py
+      - name: Final checkpoint
+        if: always()
+        run: python ci/state.py save
+      - name: Upload db artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desk-db-${{ github.run_id }}
+          path: desk-backup.db.gz
+          if-no-files-found: warn
+          retention-days: 7

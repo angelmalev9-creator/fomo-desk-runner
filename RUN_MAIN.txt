@@ -1,0 +1,9 @@
+# Restart the desk (main.py: 5 agents + Telegram + CopyWatcher). PAPER only.
+# Needs TG_TOKEN / JUPITER_API_KEY in the environment (box env); APP_TOKEN etc. are read from .secrets.
+# Never echo or write the tokens anywhere.
+cd /workspace/desk
+pkill -TERM -f "\.venv/bin/python main.py"
+for i in $(seq 1 30); do pgrep -f "\.venv/bin/python main.py" >/dev/null || break; sleep 1; done  # wait for a clean stop
+nohup .venv/bin/python main.py >> logs/main.out 2>&1 &
+echo $!
+# Check: sqlite3 desk.db "select agent, ts from heartbeats"
