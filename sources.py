@@ -248,7 +248,7 @@ class HttpSources:
 # --- Four-agent desk (2026-11-13): free, read-only market data, politely rate-limited ---------
 JUPITER_TRENDING_URL = "https://api.jup.ag/tokens/v2/{category}/{interval}"
 GECKO_OHLCV_URL = "https://api.geckoterminal.com/api/v2/networks/solana/pools/{pool}/ohlcv/minute"
-_GECKO_GAP_S = 2.2  # GeckoTerminal free tier: 30 calls/min
+_GECKO_GAP_S = 2.5  # GeckoTerminal free tier: <=30 calls/min; keep well under it
 _RUG_GAP_S = 1.5
 _gap_lock = threading.Lock()
 _gap_last: dict[str, float] = {}
@@ -279,22 +279,86 @@ def _jupiter_tokens(self, mints: list[str]) -> list[dict]:
     return [t for t in payload if isinstance(t, dict)] if isinstance(payload, list) else []
 
 
-def _gecko_ohlcv(self, pool: str, limit: int = 90) -> list[list[float]]:
-    """1-minute candles [t, o, h, l, c, v] oldest first, from free GeckoTerminal. [] on any error."""
+# Shared GeckoTerminal 1m candle fetch (Quiet Breakout + video-setup logger).
+# Free tier is ~30 calls/min per IP but shared cloud IPs (GitHub Actions) see 429s much earlier, so:
+#   * one global gap between calls, * a short per-(pool, token, limit) cache,
+#   * after a 429 a global cooldown (Retry-After or 60 s, doubling to 300 s) during which callers
+#     get [] immediately (they fail closed) instead of burning more requests,
+#   * outcome counters in GECKO_STATS so the desk can show why candles were missing.
+GECKO_CACHE_TTL_S = 50.0
+_gecko_lock = threading.Lock()
+_gecko_cache: dict[tuple, tuple[float, list[list[float]]]] = {}
+_gecko_state = {"block_until": 0.0, "backoff_s": 60.0}
+GECKO_STATS: dict[str, int] = {"ok": 0, "empty": 0, "http_429": 0, "http_other": 0, "error": 0,
+                               "cache_hit": 0, "cooldown_skip": 0}
+
+
+def gecko_stats_snapshot() -> dict[str, Any]:
+    with _gecko_lock:
+        out: dict[str, Any] = dict(GECKO_STATS)
+        out["cooldown_left_s"] = round(max(0.0, _gecko_state["block_until"] - time.monotonic()), 1)
+    return out
+
+
+def _gecko_bump(key: str) -> None:
+    with _gecko_lock:
+        GECKO_STATS[key] = GECKO_STATS.get(key, 0) + 1
+
+
+def _gecko_ohlcv(self, pool: str, limit: int = 90, token: str | None = None,
+                 before_ts: int | None = None) -> list[list[float]]:
+    """1-minute candles [t, o, h, l, c, v] oldest first, from free GeckoTerminal. [] on any error.
+
+    `token` = the coin's mint so candles are priced in that token even when it is the pool's quote
+    side; default 'base' (old behaviour)."""
     if not pool:
         return []
+    key = (pool, token or "base", int(limit), before_ts)
+    now = time.monotonic()
+    with _gecko_lock:
+        hit = _gecko_cache.get(key)
+        if hit and now - hit[0] < GECKO_CACHE_TTL_S:
+            GECKO_STATS["cache_hit"] += 1
+            return [list(r) for r in hit[1]]
+        if now < _gecko_state["block_until"]:
+            GECKO_STATS["cooldown_skip"] += 1
+            return []
     _gap_wait("gecko", _GECKO_GAP_S, self._sleep)
+    params: dict[str, Any] = {"aggregate": 1, "limit": int(limit), "currency": "usd", "token": token or "base"}
+    if before_ts:
+        params["before_timestamp"] = int(before_ts)
     try:
         with self._client() as c:
-            res = c.get(GECKO_OHLCV_URL.format(pool=quote(pool, safe="")),
-                        params={"aggregate": 1, "limit": int(limit), "currency": "usd", "token": "base"},
+            res = c.get(GECKO_OHLCV_URL.format(pool=quote(pool, safe="")), params=params,
                         headers={"accept": "application/json"})
+        if res.status_code == 429:
+            try:
+                ra = float(res.headers.get("retry-after") or 0)
+            except (TypeError, ValueError):
+                ra = 0.0
+            with _gecko_lock:
+                wait = max(ra, _gecko_state["backoff_s"])
+                _gecko_state["block_until"] = time.monotonic() + wait
+                _gecko_state["backoff_s"] = min(300.0, _gecko_state["backoff_s"] * 2)
+                GECKO_STATS["http_429"] += 1
+            log.warning("gecko 429, cooling down %.0fs", wait)
+            return []
         if res.status_code != 200:
+            _gecko_bump("http_other")
             return []
         rows = (((res.json() or {}).get("data") or {}).get("attributes") or {}).get("ohlcv_list") or []
         out = [[float(x) for x in r[:6]] for r in rows if isinstance(r, list) and len(r) >= 6]
-        return sorted(out, key=lambda r: r[0])
+        out.sort(key=lambda r: r[0])
+        with _gecko_lock:
+            _gecko_state["backoff_s"] = 60.0
+            GECKO_STATS["ok" if out else "empty"] += 1
+            _gecko_cache[key] = (time.monotonic(), out)
+            if len(_gecko_cache) > 400:
+                for k in sorted(_gecko_cache, key=lambda k: _gecko_cache[k][0])[:200]:
+                    _gecko_cache.pop(k, None)
+        return [list(r) for r in out]
     except Exception:
+        _gecko_bump("error")
         return []
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import signal
 
-from agents import analyst, auditor, copywatch, executor, risk, scanner, strategies
+from agents import analyst, auditor, copywatch, executor, milky_log, risk, scanner, strategies
 from bus import Bus
 from config import Config
 from db import DB
@@ -124,6 +124,7 @@ async def run(stop_event: asyncio.Event | None = None) -> None:
             strategies.run_agent(db, cfg, bus, sources=sources, notifier=notifier, stop_event=stop),
             name="strategies",
         ),
+        asyncio.create_task(milky_log.run_agent(db, cfg, sources=sources, stop_event=stop), name="milky_log"),
         asyncio.create_task(_heartbeat_loop(db, stop), name="heartbeats"),
         asyncio.create_task(_equity_loop(db, cfg, stop), name="equity"),
     ]

@@ -31,6 +31,15 @@ from util import agent_logger, as_float, iso_utc, utcnow
 
 log = agent_logger("strategies")
 
+
+def _gecko_stats() -> dict:
+    try:
+        from sources import gecko_stats_snapshot
+
+        return gecko_stats_snapshot()
+    except Exception:
+        return {}
+
 AGENT_ORDER = ("sniper", "momentum", "dip", "quiet", "whale")
 AGENT_LABEL = {"sniper": "Sniper", "momentum": "Momentum", "dip": "Dip Hunter", "quiet": "Quiet Breakout",
                "whale": "Whale Tail"}
@@ -117,6 +126,7 @@ DEFAULTS: dict[str, Any] = {
     "dip.fade_min_age_min": 10,
     # Quiet Breakout (backtest candidate C, /workspace/strat): desk exits only, no TP / fade
     "quiet.enabled": True,
+    "milky.log_enabled": True,  # video setups: record only, never trades
     "quiet.max_noise_pct": 1.2,  # median (high-low)/open of the last 30 1m candles, %
     "quiet.vol_x": 2.0,  # breakout candle volume vs the prior lookback average
     "quiet.min_vol30_usd": 5000.0,  # traded in the last 30 candles
@@ -627,9 +637,19 @@ class MarketAgents:
                 note_last(agent, tok, "skip", "no DEX pair / low liquidity")
                 continue
             pool = pair.get("pairAddress")
-            candles = await asyncio.to_thread(self.sources.gecko_ohlcv, pool, 90)
+            if agent == "quiet":
+                candles = await asyncio.to_thread(self.sources.gecko_ohlcv, pool, 90, token=mint)
+            else:
+                candles = await asyncio.to_thread(self.sources.gecko_ohlcv, pool, 90)
             stats["checked"] += 1
             live[agent]["checked"] += 1
+            if not candles:
+                gs = _gecko_stats()
+                why = ("candles rate-limited (fail closed)" if gs.get("cooldown_left_s") else
+                       "no candles (fail closed)")
+                log.info("%s pass %s %s: %s", agent, tok.get("symbol"), mint, why)
+                note_last(agent, tok, "pass", why)
+                continue
             if agent == "quiet":
                 why, note = quiet_signal(tok, price, candles, cfg, utcnow().timestamp(), self._migrated_ts(mint))
             else:
@@ -667,6 +687,10 @@ class MarketAgents:
                 stats["bought"] += 1
                 live[agent]["bought"] += 1
                 note_last(agent, tok, "bought", note)
+        try:
+            db.kv_set("gecko.stats", json.dumps({"ts": iso_utc(), **_gecko_stats()}))
+        except Exception:
+            pass
         done_ts = iso_utc()
         for agent, st in live.items():
             set_status(db, agent, **st, phase="waiting", done_ts=done_ts)

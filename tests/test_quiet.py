@@ -103,7 +103,7 @@ class Src:
         return {self.tok["id"]: {"pairAddress": "POOL1", "priceUsd": str(self.price), "liquidity": {"usd": 60_000},
                                  "volume": {"m5": 3_000}, "baseToken": {"name": "Calm", "symbol": "CALM"}}}
 
-    def gecko_ohlcv(self, pool, limit):
+    def gecko_ohlcv(self, pool, limit, **kw):
         return self.candles
 
     def rugcheck_report_polite(self, mint):

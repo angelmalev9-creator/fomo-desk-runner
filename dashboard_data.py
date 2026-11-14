@@ -702,6 +702,7 @@ def collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict[str, 
     down_agents = [h["agent"] for h in heartbeats if h["status"] != "ok" and h["agent"] in AGENTS]
 
     return {
+        "milky": milky_block(conn),
         "generated_at": iso_utc(now),
         "generated_at_sofia": sofia(now),
         "timezone": ZONE_LABEL,
@@ -1401,6 +1402,49 @@ def _agent_live(conn, key, coins, st, n_traders, waiting_n) -> dict[str, Any]:
 LIVE_ACTIVITY = 30
 
 
+def milky_block(conn: sqlite3.Connection, limit: int = 15) -> dict[str, Any]:
+    """'Video setups (log only)': @milkybids dump-bounce setups, recorded, never traded."""
+    status = {}
+    try:
+        status = json.loads(kv(conn, "agent.milky.status") or "{}")
+    except (ValueError, TypeError):
+        status = {}
+    try:
+        gecko = json.loads(kv(conn, "gecko.stats") or "{}")
+    except (ValueError, TypeError):
+        gecko = {}
+    try:
+        raw = rows(conn, "SELECT * FROM milky_setups ORDER BY trigger_ts DESC LIMIT ?", (limit,))
+        totals = rows(conn, "SELECT entry_kind, COUNT(*) AS n FROM milky_setups GROUP BY entry_kind")
+    except sqlite3.Error:
+        raw, totals = [], []
+    items = []
+    for r in raw:
+        try:
+            filt = json.loads(r.get("filters") or "[]")
+        except ValueError:
+            filt = []
+        try:
+            out = json.loads(r.get("outcome") or "null")
+        except ValueError:
+            out = None
+        items.append({
+            "symbol": r.get("symbol"), "mint": r.get("mint"), "entry": r.get("entry_kind"),
+            "trigger_ts": r.get("trigger_ts"), "trigger_sofia": sofia(r.get("trigger_ts")) if r.get("trigger_ts") else None,
+            "trigger_price": r.get("trigger_price"), "mcap": r.get("mcap_at_trigger"), "ath_mcap": r.get("ath_mcap"),
+            "vol24": r.get("vol24_usd"), "filters": filt, "outcome": out, "final": bool(r.get("outcome_final")),
+        })
+    return {
+        "title": "Video setups (log only)",
+        "note": "PAPER research log of the @milkybids dump-bounce pattern. No trades, no alerts.",
+        "enabled": bool(status.get("enabled")) if status else None,
+        "status": status or None,
+        "counts": {str(t["entry_kind"]): int(t["n"]) for t in totals},
+        "items": items,
+        "gecko": gecko or None,
+    }
+
+
 def live_collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict[str, Any]:
     """Small real-time file (fomo-live.json): heartbeats, agents, open marks, newest events, ticker."""
     full = collect(conn, now)
@@ -1417,5 +1461,7 @@ def live_collect(conn: sqlite3.Connection, now: datetime | None = None) -> dict[
         "heartbeats": [{"agent": x["agent"], "status": x["status"], "age_s": x.get("age_s"), "ts": x.get("ts")}
                        for x in full["heartbeats"]],
         "desk4": d4,
+        "milky": {k: full["milky"].get(k) for k in ("title", "enabled", "status", "counts")}
+        | {"items": full["milky"].get("items", [])[:5]},
         "schema": 4,
     }

@@ -210,6 +210,26 @@ CREATE TABLE IF NOT EXISTS copy_seen (
     action TEXT
 );
 
+CREATE TABLE IF NOT EXISTS milky_setups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mint TEXT NOT NULL,
+    symbol TEXT,
+    pool TEXT,
+    entry_kind TEXT NOT NULL,
+    trigger_ts TEXT NOT NULL,
+    trigger_price REAL,
+    ath_price REAL,
+    ath_ts TEXT,
+    mcap_at_trigger REAL,
+    ath_mcap REAL,
+    vol24_usd REAL,
+    filters TEXT,
+    detected_at TEXT,
+    outcome TEXT,
+    outcome_final INTEGER DEFAULT 0,
+    UNIQUE (mint, entry_kind, trigger_ts)
+);
+
 CREATE TABLE IF NOT EXISTS equity (
     ts TEXT PRIMARY KEY,
     value REAL,

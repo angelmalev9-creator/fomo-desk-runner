@@ -203,7 +203,7 @@ class FakeSources:
         return {self.tok["id"]: {"pairAddress": "POOL1", "priceUsd": str(self.price), "liquidity": {"usd": 50_000},
                                  "volume": {"m5": 12_000}, "baseToken": {"name": "Meme", "symbol": "MEME"}}}
 
-    def gecko_ohlcv(self, pool, limit):
+    def gecko_ohlcv(self, pool, limit, **kw):
         return self.candles
 
     def rugcheck_report_polite(self, mint):
