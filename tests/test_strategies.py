@@ -273,15 +273,16 @@ def test_dashboard_desk4_block(db, cfg, tmp_path):
     out = gist_push.sanitize(D.collect(conn))
     d4 = out["desk4"]
     by = {a["key"]: a for a in d4["agents"]}
-    assert [a["key"] for a in d4["agents"]] == ["sniper", "momentum", "dip", "whale"]
+    assert [a["key"] for a in d4["agents"]] == ["sniper", "momentum", "dip", "quiet", "whale"]
     assert by["momentum"]["state"] == "in_trade" and by["momentum"]["positions"][0]["series"][0] == 0
     assert by["whale"]["wins"] == 1 and by["whale"]["losses"] == 0 and by["dip"]["state"] == "idle"
-    assert d4["label"] == "PAPER 4 agents" and d4["ticker"][0]["symbol"] == "JUP"
+    assert d4["label"] == "PAPER 5 agents" and d4["ticker"][0]["symbol"] == "JUP"
     assert d4["goal"]["next"] == 1.25 and any(e["agent"] == "whale" for e in d4["events"])
 
 
 def test_live_status_and_summary(db, cfg):
     _set(db, "dip.enabled", False)
+    _set(db, "quiet.enabled", False)
     cfg.set("risk.stop_pct", "1", who="test")
     src = FakeSources(_tok(), 0.99, _candles(high=1.0), _report())  # under the 1h high -> pass
     asyncio.run(S.MarketAgents(db, cfg, FakeBus(), src).cycle())

@@ -222,7 +222,8 @@ def audit_mint(
     sold_txt = "sold 0" if (creator_at_mig is None or dev_bal + 1e-9 >= float(creator_at_mig)) else "sold"
     emit(_layer(3, True, f"{dev_pct:.1f}% · {sold_txt}", "rpc"))
 
-    # Layer 4 — top 10
+    # Layer 4 — top 10 (RPC first, RugCheck report as fallback)
+    prefetched_report = None
     pool = (coin or {}).get("pool") or (scanner or {}).get("pool")
     curve = (coin or {}).get("curve") or (scanner or {}).get("curve")
     try:
@@ -234,16 +235,33 @@ def audit_mint(
         t = time.monotonic()
         pct = _with_retry(_top10, retries, wait_s, sleep, "top 10")
         timings.append(f"top10={int((time.monotonic()-t)*1000)}ms")
+        top_src = "rpc"
     except _Retryable:
-        return fail(_layer(4, False, "no data: top 10", "rpc"))
+        # Public RPC rate-limits getTokenLargestAccounts. Fall back to RugCheck's free
+        # report (topHolders); still fail closed when neither source has data.
+        pct = None
+        top_src = "rugcheck"
+        if sources is not None:
+            try:
+                t = time.monotonic()
+                prefetched_report = _with_retry(lambda: sources.rugcheck_report(mint), retries, wait_s, sleep, "top 10")
+                timings.append(f"top10_rug={int((time.monotonic()-t)*1000)}ms")
+                pct = rugcheck_top10_pct(prefetched_report, pool, curve)
+            except _Retryable:
+                pct = None
+        if pct is None:
+            return fail(_layer(4, False, "no data: top 10", "rpc+rugcheck"))
+        log.info("auditor top10 fallback=rugcheck mint=%s pct=%.1f", mint[:8], pct)
     max_top = float(cfg.get("auditor.max_top10_pct") or 25)
     if pct >= max_top:
-        return fail(_layer(4, False, f"top 10 hold {pct:.0f}%" if pct >= 10 else f"top 10 hold {pct:.1f}%", "rpc"))
-    emit(_layer(4, True, f"{pct:.1f}%", "rpc"))
+        return fail(_layer(4, False, f"top 10 hold {pct:.0f}%" if pct >= 10 else f"top 10 hold {pct:.1f}%", top_src))
+    emit(_layer(4, True, f"{pct:.1f}%", top_src))
 
     # Layer 5 — LP locked + liquidity not pulled
     try:
         def _report():
+            if prefetched_report is not None:
+                return prefetched_report
             if sources is None:
                 raise _Retryable("no data: liquidity")
             return sources.rugcheck_report(mint)
@@ -439,6 +457,44 @@ def _creator_balance(rpc: Rpc, creator: str, mint: str, acct_body: dict) -> floa
             if isinstance(acc, dict):
                 total += token_account_ui_amount(acc)
     return total
+
+
+_TOP10_EXCLUDE_TYPES = {"AMM", "LOCKER", "BURN", "CURVE"}
+
+
+def rugcheck_top10_pct(report, pool: str | None = None, curve: str | None = None) -> float | None:
+    """Top-10 holders % of supply from a RugCheck report, excluding pools, curves, lockers.
+
+    Returns None when the report has no usable holder data (caller fails closed)."""
+    if not isinstance(report, dict):
+        return None
+    holders = report.get("topHolders")
+    if not isinstance(holders, list) or not holders:
+        return None
+    skip = {a for a in (pool, curve) if a}
+    known = report.get("knownAccounts") or {}
+    if isinstance(known, dict):
+        for addr, info in known.items():
+            if isinstance(info, dict) and str(info.get("type", "")).upper() in _TOP10_EXCLUDE_TYPES:
+                skip.add(addr)
+    for m in report.get("markets") or []:
+        if isinstance(m, dict):
+            for k in ("pubkey", "liquidityA", "liquidityB", "liquidityAAccount", "liquidityBAccount"):
+                if isinstance(m.get(k), str) and m.get(k):
+                    skip.add(m[k])
+    pcts = []
+    for h in holders:
+        if not isinstance(h, dict):
+            continue
+        if h.get("owner") in skip or h.get("address") in skip:
+            continue
+        v = as_float(h.get("pct"))
+        if v is not None:
+            pcts.append(v)
+    if not pcts:
+        return None
+    pcts.sort(reverse=True)
+    return round(sum(pcts[:10]), 2)
 
 
 def top10_pct(rpc: Rpc, mint: str, supply: float, pool: str | None, curve: str | None) -> float:

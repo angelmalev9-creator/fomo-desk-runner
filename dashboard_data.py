@@ -29,7 +29,10 @@ ZONE = ZoneInfo("Europe/Sofia")
 ZONE_LABEL = "Europe/Sofia"
 
 # Expected agents (same set main.py starts).
-AGENTS = ("main", "scanner", "auditor", "analyst", "executor", "risk", "telegram", "copywatch", "momentum", "dip")
+AGENTS = ("main", "scanner", "auditor", "analyst", "executor", "risk", "telegram", "copywatch", "momentum", "dip",
+          "quiet")
+MARKET_AGENT_KEYS = ("momentum", "dip", "quiet")  # fed by agents/strategies.py MarketAgents
+MARKET_AGENT_LABEL = {"momentum": "Momentum", "dip": "Dip Hunter", "quiet": "Quiet Breakout"}
 
 # desk-health style: warn after 3 min, mark down after 5 min.
 STALE_WARN_S = 180
@@ -353,8 +356,8 @@ def source_fields(pos: dict[str, Any]) -> dict[str, Any]:
     if pos.get("source") == "copy" and pos.get("copy_handle"):
         return {"source": "copy", "copy_handle": pos["copy_handle"], "source_label": f"копие от {pos['copy_handle']}",
                 "agent": agent}
-    if pos.get("source") in ("momentum", "dip"):
-        label = "Momentum" if pos["source"] == "momentum" else "Dip Hunter"
+    if pos.get("source") in MARKET_AGENT_KEYS:
+        label = MARKET_AGENT_LABEL[pos["source"]]
         return {"source": pos["source"], "copy_handle": None, "source_label": label, "agent": agent}
     return {"source": "desk", "copy_handle": None, "source_label": None, "agent": agent}
 
@@ -829,6 +832,7 @@ AGENT_ROLE = {
     "copywatch": "Копиране · топ трейдъри (PAPER)",
     "momentum": "Momentum · volume breakouts (PAPER)",
     "dip": "Dip Hunter · −30% wicks (PAPER)",
+    "quiet": "Quiet Breakout · calm breakouts (PAPER)",
 }
 
 
@@ -1090,6 +1094,7 @@ DESK4_AGENTS = [
     {"key": "sniper", "name": "Sniper", "icon": "target", "color": "#f97316", "sub": "fresh migrations"},
     {"key": "momentum", "name": "Momentum", "icon": "bolt", "color": "#3b82f6", "sub": "volume breakouts"},
     {"key": "dip", "name": "Dip Hunter", "icon": "radar", "color": "#14b8a6", "sub": "−30% wicks"},
+    {"key": "quiet", "name": "Quiet Breakout", "icon": "quiet", "color": "#eab308", "sub": "calm breakouts"},
     {"key": "whale", "name": "Whale Tail", "icon": "whale", "color": "#8b5cf6", "sub": "smart wallets"},
 ]
 GOAL_NODES = [1.25, 1.5, 2.0, 3.0, 4.0, 5.0]
@@ -1101,7 +1106,7 @@ def agent_of_source(src: Any) -> str:
     src = str(src or "").lower()
     if src == "copy":
         return "whale"
-    if src in ("momentum", "dip"):
+    if src in MARKET_AGENT_KEYS:
         return src
     return "sniper"
 
@@ -1206,7 +1211,7 @@ def desk4_block(conn, settings, now, start_stack, current_stack, started_at, ope
         unreal = round(sum(float(p.get("unrealized_pnl_usd") or 0) for p in mine_open), 2)
         unreal_total += unreal
         used = round(sum(float(p.get("size_usd") or 0) for p in mine_open), 2)
-        if key in ("momentum", "dip"):
+        if key in MARKET_AGENT_KEYS:
             st = status_kv(key)
             enabled = _kv_bool(conn, f"{key}.enabled", True) and _kv_bool(conn, "agents.enabled", True)
             scanning = int(st.get("scanning") or 0)
@@ -1243,7 +1248,7 @@ def desk4_block(conn, settings, now, start_stack, current_stack, started_at, ope
         hb_age = (hb.get(hb_name) or {}).get("age_s")
         agents_out.append({
             **meta,
-            "live": _agent_live(conn, key, coins, status_kv(key) if key in ("momentum", "dip") else None,
+            "live": _agent_live(conn, key, coins, status_kv(key) if key in MARKET_AGENT_KEYS else None,
                                 len(active_traders), waiting.get("n")),
             "hb_age_s": hb_age,
             "stalled": hb_age is None or float(hb_age) > STALL_S,
@@ -1303,7 +1308,7 @@ def desk4_block(conn, settings, now, start_stack, current_stack, started_at, ope
     acts = []
     for a in reversed(safe_rows(conn, "SELECT * FROM activity ORDER BY id DESC LIMIT 40")):
         raw = str(a.get("agent") or "")
-        if raw in ("momentum", "dip"):
+        if raw in MARKET_AGENT_KEYS:
             ag = raw
         elif raw == "copy":
             ag = "whale"
@@ -1328,7 +1333,7 @@ def desk4_block(conn, settings, now, start_stack, current_stack, started_at, ope
 
     return {
         "mode": mode,
-        "label": f"{mode} 4 agents",
+        "label": f"{mode} {len(DESK4_AGENTS)} agents",
         "agents": agents_out,
         "sleeve_pct": sleeve_pct,
         "sleeves_enabled": sleeves_on,
@@ -1359,7 +1364,7 @@ ACTION_TEXT = {
 
 def _agent_live(conn, key, coins, st, n_traders, waiting_n) -> dict[str, Any]:
     """What the agent is doing right now, from real desk rows. All ts are ISO UTC."""
-    if key in ("momentum", "dip"):
+    if key in MARKET_AGENT_KEYS:
         st = st or {}
         last = st.get("last") or None
         return {"kind": "market", "phase": st.get("phase"), "cycle_ts": st.get("cycle_ts") or st.get("ts"),

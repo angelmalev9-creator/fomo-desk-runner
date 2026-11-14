@@ -4,6 +4,8 @@ Agents and their position `source`:
   Sniper     -> scanner/executor path (source NULL or 'scanner'): migration pairs, auditor 8/8 + analyst
   Momentum   -> 'momentum' (NEW): volume breakout that breaks its 1h high
   Dip Hunter -> 'dip' (NEW): buys a sharp wick (~-30% off the recent high) that is bouncing
+  Quiet Breakout -> 'quiet': only calm coins (median 1m range <= quiet.max_noise_pct, so a 1% stop is
+               not pure noise) that close above their 30m high on >= 2x volume
   Whale Tail -> 'copy': copywatch on the four winnable FOMO traders
 
 Each agent trades only inside its own sleeve (default 25% of the PAPER stack); one agent's stop
@@ -29,9 +31,15 @@ from util import agent_logger, as_float, iso_utc, utcnow
 
 log = agent_logger("strategies")
 
-AGENT_ORDER = ("sniper", "momentum", "dip", "whale")
-AGENT_LABEL = {"sniper": "Sniper", "momentum": "Momentum", "dip": "Dip Hunter", "whale": "Whale Tail"}
-AGENT_SUB = {"sniper": "fresh migrations", "momentum": "volume breakouts", "dip": "−30% wicks", "whale": "smart wallets"}
+AGENT_ORDER = ("sniper", "momentum", "dip", "quiet", "whale")
+AGENT_LABEL = {"sniper": "Sniper", "momentum": "Momentum", "dip": "Dip Hunter", "quiet": "Quiet Breakout",
+               "whale": "Whale Tail"}
+AGENT_SUB = {"sniper": "fresh migrations", "momentum": "volume breakouts", "dip": "−30% wicks",
+             "quiet": "calm breakouts", "whale": "smart wallets"}
+MARKET_AGENTS = ("momentum", "dip", "quiet")  # agents fed by MarketAgents.cycle()
+QUIET_MAX_CHASE_PCT = 3.0  # live price may be at most this far above the signal candle close
+QUIET_MIGRATION_POOL = 50  # recent migrations (age >= quiet.min_age_min, <= 16 h) added to the universe
+QUIET_MIGRATION_MAX_AGE_H = 16
 
 # Not memes: never traded by Momentum / Dip Hunter.
 NON_MEME = {
@@ -107,6 +115,18 @@ DEFAULTS: dict[str, Any] = {
     "dip.fade_exit": False,
     "dip.fade_ratio": 0.30,
     "dip.fade_min_age_min": 10,
+    # Quiet Breakout (backtest candidate C, /workspace/strat): desk exits only, no TP / fade
+    "quiet.enabled": True,
+    "quiet.max_noise_pct": 1.2,  # median (high-low)/open of the last 30 1m candles, %
+    "quiet.vol_x": 2.0,  # breakout candle volume vs the prior lookback average
+    "quiet.min_vol30_usd": 5000.0,  # traded in the last 30 candles
+    "quiet.lookback_min": 30,  # breakout above the high of this many prior candles
+    "quiet.min_age_min": 30,
+    "quiet.max_per_hour": 2,
+    "quiet.tp_pct": 0.0,
+    "quiet.fade_exit": False,
+    "quiet.fade_ratio": 0.30,
+    "quiet.fade_min_age_min": 10,
     # existing paths: extra exits stay OFF (backtest: TP ladders hurt the copy path)
     "sniper.tp_pct": 0.0,
     "sniper.fade_exit": False,
@@ -144,7 +164,7 @@ def agent_of(pos: dict) -> str:
     src = str(pos.get("source") or "").lower()
     if src == "copy":
         return "whale"
-    if src in ("momentum", "dip"):
+    if src in MARKET_AGENTS:
         return src
     return "sniper"
 
@@ -303,6 +323,81 @@ def dip_signal(tok: dict, price: float | None, candles: list[list[float]], cfg, 
     return None, f"−{drop:.0f}% wick, bids stepping in · buys {ratio:.0%}"
 
 
+def quiet_prefilter(tok: dict, cfg) -> str | None:
+    """Cheap Jupiter-stats screen: enough recent volume and an up move in the last 5m."""
+    s5, s1 = tok.get("stats5m") or {}, tok.get("stats1h") or {}
+    v1 = (_f(s1, "buyVolume") or 0) + (_f(s1, "sellVolume") or 0)
+    if v1 < float(setting(cfg, "quiet.min_vol30_usd")):
+        return "thin volume"
+    m5 = _f(s5, "priceChange")
+    if m5 is None:
+        return "no m5"
+    if m5 <= 0:
+        return "no up move"
+    return None
+
+
+def _noise_pct(candles: list[list[float]]) -> float | None:
+    r = sorted((c[2] - c[3]) / c[1] * 100.0 for c in candles if c[1] > 0)
+    if not r:
+        return None
+    n = len(r)
+    return r[n // 2] if n % 2 else (r[n // 2 - 1] + r[n // 2]) / 2.0
+
+
+def quiet_signal(tok: dict, price: float | None, candles: list[list[float]], cfg, now_ts: float,
+                 migrated_ts: float | None = None) -> tuple[str | None, str]:
+    """(reason_to_skip | None, note). Calm coin closing above its lookback high on a volume burst.
+
+    Uses only COMPLETED 1m candles (GeckoTerminal skips minutes without trades). Fail closed."""
+    pre = quiet_prefilter(tok, cfg)
+    if pre:
+        return pre, ""
+    if price is None or price <= 0:
+        return "no price", ""
+    look = int(setting(cfg, "quiet.lookback_min"))
+    done = [c for c in candles if c[0] <= now_ts - 60]
+    if len(done) < look + 1:
+        return "no candles (fail closed)", ""
+    sig = done[-1]
+    if sig[0] < now_ts - 180:
+        return "no fresh candle", ""
+    min_age = float(setting(cfg, "quiet.min_age_min"))
+    if migrated_ts is not None:
+        if (now_ts - migrated_ts) / 60.0 < min_age:
+            return "too young", ""
+    elif (sig[0] - done[0][0]) / 60.0 < min_age:
+        return "too young (short history)", ""
+    prior = done[-1 - look:-1]
+    noise = _noise_pct(prior[-30:])
+    if noise is None:
+        return "no candles (fail closed)", ""
+    if noise > float(setting(cfg, "quiet.max_noise_pct")):
+        return f"noisy {noise:.1f}%", ""
+    high = max(c[2] for c in prior)
+    if sig[4] <= high:
+        return f"under the {look}m high", ""
+    avg_v = sum(c[5] for c in prior) / len(prior)
+    spike = sig[5] / avg_v if avg_v > 0 else 0.0
+    if avg_v <= 0 or spike < float(setting(cfg, "quiet.vol_x")):
+        return "no volume burst", ""
+    vol30 = sum(c[5] for c in done[-30:])
+    if vol30 < float(setting(cfg, "quiet.min_vol30_usd")):
+        return "thin volume", ""
+    if sig[4] > 0 and price > sig[4] * (1 + QUIET_MAX_CHASE_PCT / 100.0):
+        return f"ran away +{(price / sig[4] - 1) * 100:.0f}% (no chase)", ""
+    return None, f"broke the {look}m high · noise {noise:.1f}% · volume {spike:.1f}x"
+
+
+def quiet_size(stack: float, cfg) -> float | None:
+    """Position size for Quiet Breakout: agents.max_position_pct of the stack; None if below the min ticket."""
+    size = float(stack) * float(setting(cfg, "agents.max_position_pct")) / 100.0
+    min_ticket = float(cfg.get("executor.min_ticket_usd") or 47.5)
+    if size + 1e-9 < min_ticket:
+        return None
+    return round(size, 2)
+
+
 def rug_check(tok: dict, report: dict | None, pool: str | None, cfg) -> tuple[str | None, str]:
     """Free rug screen (Jupiter audit + RugCheck). Any missing field -> skip."""
     audit = tok.get("audit") or {}
@@ -390,6 +485,7 @@ class MarketAgents:
     def __init__(self, db, cfg, bus, sources, notifier=None) -> None:
         self.db, self.cfg, self.bus, self.sources, self.notifier = db, cfg, bus, sources, notifier
         self.skip_logged: dict[str, float] = {}
+        self.rot: dict[str, int] = {}
 
     # -- helpers
     def _recent_entries(self, agent: str, hours: float) -> list[dict]:
@@ -443,7 +539,7 @@ class MarketAgents:
 
     async def cycle(self) -> dict[str, int]:
         cfg, db = self.cfg, self.db
-        stats = {"universe": 0, "momentum": 0, "dip": 0, "checked": 0, "bought": 0}
+        stats = {"universe": 0, "momentum": 0, "dip": 0, "quiet": 0, "checked": 0, "bought": 0}
         await self._ticker()
         if not bool(setting(cfg, "agents.enabled")):
             return stats
@@ -455,12 +551,22 @@ class MarketAgents:
                         toks.setdefault(t["id"], t)
             except Exception as e:
                 log.warning("jupiter %s/%s failed: %s", cat, iv, type(e).__name__)
+        if bool(setting(cfg, "quiet.enabled")):
+            mig = self._recent_migrations()
+            missing = [m for m in mig if m not in toks]
+            if missing:
+                try:
+                    for t in await asyncio.to_thread(self.sources.jupiter_tokens, missing):
+                        if t.get("id"):
+                            toks.setdefault(t["id"], t)
+                except Exception as e:
+                    log.warning("jupiter migrations failed: %s", type(e).__name__)
         uni = [t for t in toks.values() if universe_ok(t, cfg) is None]
         stats["universe"] = len(uni)
         cycle_ts = iso_utc()
         live: dict[str, dict[str, Any]] = {}
         per_agent: dict[str, list[dict]] = {}
-        for agent, pre in (("momentum", momentum_prefilter), ("dip", dip_prefilter)):
+        for agent, pre in (("momentum", momentum_prefilter), ("dip", dip_prefilter), ("quiet", quiet_prefilter)):
             on = bool(setting(cfg, f"{agent}.enabled")) and bool(setting(cfg, "agents.enabled"))
             reasons: dict[str, int] = {}
             per_agent[agent] = []
@@ -477,16 +583,23 @@ class MarketAgents:
                            "checked": 0, "bought": 0, "cycle_ts": cycle_ts,
                            "top_reasons": sorted(reasons.items(), key=lambda kv: -kv[1])[:3], "last": None}
             set_status(db, agent, **{k: v for k, v in live[agent].items()}, phase="checking")
-        # fair share of the deep-check budget: alternate momentum / dip
+        # fair share of the deep-check budget: round-robin over the market agents; each agent's
+        # list is rotated across cycles so every candidate gets a deep check eventually.
         cap = int(setting(cfg, "agents.max_checks_per_cycle"))
+        lists = {}
+        for agent in MARKET_AGENTS:
+            lst = per_agent.get(agent, [])
+            off = self.rot.get(agent, 0) % len(lst) if lst else 0
+            lists[agent] = lst[off:] + lst[:off]
         cands: list[tuple[str, dict]] = []
-        m, d = per_agent.get("momentum", []), per_agent.get("dip", [])
-        for i in range(max(len(m), len(d))):
-            if i < len(m):
-                cands.append(("momentum", m[i]))
-            if i < len(d):
-                cands.append(("dip", d[i]))
+        for i in range(max((len(v) for v in lists.values()), default=0)):
+            for agent in MARKET_AGENTS:
+                if i < len(lists[agent]):
+                    cands.append((agent, lists[agent][i]))
         cands = cands[:cap]
+        for agent in MARKET_AGENTS:
+            taken = sum(1 for a, _ in cands if a == agent)
+            self.rot[agent] = self.rot.get(agent, 0) + taken
 
         def note_last(agent: str, tok: dict, verdict: str, reason: str) -> None:
             sym = str(tok.get("symbol") or tok.get("id", "")[:6]).lstrip("$")
@@ -517,8 +630,11 @@ class MarketAgents:
             candles = await asyncio.to_thread(self.sources.gecko_ohlcv, pool, 90)
             stats["checked"] += 1
             live[agent]["checked"] += 1
-            fn = momentum_signal if agent == "momentum" else dip_signal
-            why, note = fn(tok, price, candles, cfg, utcnow().timestamp())
+            if agent == "quiet":
+                why, note = quiet_signal(tok, price, candles, cfg, utcnow().timestamp(), self._migrated_ts(mint))
+            else:
+                fn = momentum_signal if agent == "momentum" else dip_signal
+                why, note = fn(tok, price, candles, cfg, utcnow().timestamp())
             if why:
                 log.info("%s pass %s %s: %s", agent, tok.get("symbol"), mint, why)
                 note_last(agent, tok, "pass", why)
@@ -533,7 +649,15 @@ class MarketAgents:
                 self._log_skip(agent, tok, bad)
                 note_last(agent, tok, "skip", bad)
                 continue
-            size = float(setting(cfg, f"{agent}.size_usd"))
+            if agent == "quiet":
+                qs = quiet_size(session.current_stack(db, cfg), cfg)
+                if qs is None:
+                    self._log_skip(agent, tok, "below min ticket")
+                    note_last(agent, tok, "skip", "below min ticket")
+                    continue
+                size = qs
+            else:
+                size = float(setting(cfg, f"{agent}.size_usd"))
             full = sleeve_check(db, cfg, agent, size)
             if full:
                 self._log_skip(agent, tok, full)
@@ -548,6 +672,32 @@ class MarketAgents:
             set_status(db, agent, **st, phase="waiting", done_ts=done_ts)
             self._summary(agent, st)
         return stats
+
+    def _recent_migrations(self) -> list[str]:
+        """Mints migrated between quiet.min_age_min and QUIET_MIGRATION_MAX_AGE_H ago, newest first."""
+        now = utcnow()
+        lo = iso_utc(now - timedelta(hours=QUIET_MIGRATION_MAX_AGE_H))
+        hi = iso_utc(now - timedelta(minutes=float(setting(self.cfg, "quiet.min_age_min"))))
+        try:
+            rows = self.db.query(
+                "SELECT mint FROM coins WHERE migrated_at>=? AND migrated_at<=? ORDER BY migrated_at DESC LIMIT ?",
+                (lo, hi, QUIET_MIGRATION_POOL))
+        except Exception:
+            return []
+        return [r["mint"] for r in rows if r["mint"]]
+
+    def _migrated_ts(self, mint: str) -> float | None:
+        try:
+            coin = self.db.get_coin(mint) or {}
+        except Exception:
+            return None
+        raw = coin.get("migrated_at")
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            return None
 
     def _summary(self, agent: str, st: dict) -> None:
         """At most one 'scan' activity row per agent per agents.summary_min (default 10 min)."""
@@ -608,16 +758,16 @@ async def run_agent(db, cfg, bus, sources=None, notifier=None, stop_event: async
     ma = MarketAgents(db, cfg, bus, sources, notifier)
     stop = stop_event or asyncio.Event()
     while not stop.is_set():
-        db.heartbeat("momentum")
-        db.heartbeat("dip")
+        for hb in MARKET_AGENTS:
+            db.heartbeat(hb)
         if sources is not None:
             try:
                 res = await ma.cycle()
                 log.info("cycle %s", res)
             except Exception as e:
                 log.warning("cycle failed: %s", type(e).__name__)
-        db.heartbeat("momentum")
-        db.heartbeat("dip")
+        for hb in MARKET_AGENTS:
+            db.heartbeat(hb)
         try:
             await asyncio.wait_for(stop.wait(), timeout=float(setting(cfg, "agents.poll_s")))
         except asyncio.TimeoutError:

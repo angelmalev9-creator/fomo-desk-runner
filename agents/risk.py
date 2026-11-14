@@ -362,7 +362,7 @@ async def _poll_once(db, cfg, bus, notifier, sources, missing, exiting_since, re
 
     # Copy trades can live on any DEX: fill the gaps from the most liquid pair.
     copy_missing = [
-        p["mint"] for p in positions if p.get("source") in ("copy", "momentum", "dip") and p["mint"] not in pairs
+        p["mint"] for p in positions if p.get("source") in ("copy", "momentum", "dip", "quiet") and p["mint"] not in pairs
     ]
     if copy_missing and sources is not None and hasattr(sources, "any_dex_pairs"):
         try:
