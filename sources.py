@@ -288,7 +288,7 @@ def _jupiter_tokens(self, mints: list[str]) -> list[dict]:
 GECKO_CACHE_TTL_S = 50.0
 _gecko_lock = threading.Lock()
 _gecko_cache: dict[tuple, tuple[float, list[list[float]]]] = {}
-_gecko_state = {"block_until": 0.0, "backoff_s": 60.0}
+_gecko_state = {"block_until": 0.0, "backoff_s": 60.0, "last_429": 0.0}
 GECKO_STATS: dict[str, int] = {"ok": 0, "empty": 0, "http_429": 0, "http_other": 0, "error": 0,
                                "cache_hit": 0, "cooldown_skip": 0}
 
@@ -298,6 +298,13 @@ def gecko_stats_snapshot() -> dict[str, Any]:
         out: dict[str, Any] = dict(GECKO_STATS)
         out["cooldown_left_s"] = round(max(0.0, _gecko_state["block_until"] - time.monotonic()), 1)
     return out
+
+
+def gecko_recent_429(window_s: float = 300.0) -> bool:
+    """True if GeckoTerminal answered 429 in the last window (low-priority callers yield)."""
+    with _gecko_lock:
+        last = _gecko_state.get("last_429") or 0.0
+    return bool(last) and time.monotonic() - last < window_s
 
 
 def _gecko_bump(key: str) -> None:
@@ -339,6 +346,7 @@ def _gecko_ohlcv(self, pool: str, limit: int = 90, token: str | None = None,
             with _gecko_lock:
                 wait = max(ra, _gecko_state["backoff_s"])
                 _gecko_state["block_until"] = time.monotonic() + wait
+                _gecko_state["last_429"] = time.monotonic()
                 _gecko_state["backoff_s"] = min(300.0, _gecko_state["backoff_s"] * 2)
                 GECKO_STATS["http_429"] += 1
             log.warning("gecko 429, cooling down %.0fs", wait)

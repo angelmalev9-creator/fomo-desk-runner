@@ -151,7 +151,7 @@ def test_gecko_shared_cache_and_429_cooldown(monkeypatch):
 
     monkeypatch.setattr(SRC, "_GECKO_GAP_S", 0)
     SRC._gecko_cache.clear()
-    SRC._gecko_state.update(block_until=0.0, backoff_s=60.0)
+    SRC._gecko_state.update(block_until=0.0, backoff_s=60.0, last_429=0.0)
     s = SRC.HttpSources(transport=httpx.MockTransport(handler), sleep=lambda x: None)
     assert s.gecko_ohlcv("P", 90, token="MINT") == []
     snap = SRC.gecko_stats_snapshot()
@@ -163,3 +163,22 @@ def test_gecko_shared_cache_and_429_cooldown(monkeypatch):
     assert [r[0] for r in got] == [1.0, 2.0]
     assert s.gecko_ohlcv("P", 90, token="MINT") == got and calls["n"] == 2  # cached
     SRC._gecko_cache.clear()
+    SRC._gecko_state["last_429"] = 0.0
+    SRC._gecko_cache.clear()
+
+
+def test_milky_yields_after_recent_429(db, cfg, monkeypatch):
+    import time as _t
+
+    monkeypatch.setattr(M, "PAIRS_GAP_S", 0)
+    SRC._gecko_state["last_429"] = _t.monotonic()
+    try:
+        t0 = NOW.timestamp() - 8 * 3600
+        bars, _ = _e1_bars(t0)
+        for k in range(3):
+            _seed_coin(db, f"MILKY{k}pump", iso_utc(NOW - timedelta(hours=8)))
+        src = FakeSrc(bars)
+        st = asyncio.run(M.MilkyLogger(db, cfg, src).cycle())
+        assert st["gecko_budget"] == 1 and src.gecko_calls == 1
+    finally:
+        SRC._gecko_state["last_429"] = 0.0

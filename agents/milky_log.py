@@ -311,7 +311,16 @@ class MilkyLogger:
         if rest:
             off = self.rot % len(rest)
             rest = rest[off:] + rest[:off]
-        order = (head + rest)[:MILKY_GECKO_PER_CYCLE]
+        budget = MILKY_GECKO_PER_CYCLE
+        try:
+            from sources import gecko_recent_429
+
+            if gecko_recent_429():  # Quiet Breakout has priority on the shared GeckoTerminal budget
+                budget = 1
+        except Exception:
+            pass
+        st["gecko_budget"] = budget
+        order = (head + rest)[:budget]
         self.rot += max(0, len(order) - len(head))
         now_ts = utcnow().timestamp()
         for mint in order:
