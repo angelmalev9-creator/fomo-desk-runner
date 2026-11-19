@@ -212,13 +212,19 @@ class FakeSources:
 
 def test_cycle_opens_paper_momentum_and_ticker(db, cfg):
     _set(db, "dip.enabled", False)
+    _set(db, "agents.sleeve_pct", 100.0)
+    _set(db, "agents.max_position_pct", 45.0)
+    db.start_night("PAPER", 117.66)
+    db.add_balance(117.66)
     cfg.set("risk.stop_pct", "1", who="test")
     src = FakeSources(_tok(), 1.05, _candles(high=1.0), _report())
     bus = FakeBus()
     stats = asyncio.run(S.MarketAgents(db, cfg, bus, src, notifier=None).cycle())
     assert stats["bought"] == 1
     pos = db.open_positions()[0]
-    assert pos["source"] == "momentum" and pos["mode"] == "PAPER" and pos["size_usd"] == 20
+    expected = S.position_size(117.66, cfg)
+    assert expected == 52.94
+    assert pos["source"] == "momentum" and pos["mode"] == "PAPER" and pos["size_usd"] == expected
     assert abs(pos["stop_price"] - 1.05 * 0.99) < 1e-9  # 1% stop, never the video's 6%
     assert bus.items and json.loads(db.kv_get("ticker"))["items"][0]["symbol"] == "JUP"
     assert json.loads(db.kv_get(S.meta_key(pos["id"])))["entry_vol_m5"] == 12_000
@@ -236,9 +242,12 @@ def test_cycle_fails_closed_on_rug_and_flag(db, cfg):
 
 
 def test_cycle_respects_sleeve(db, cfg):
-    for i in range(2):
-        _open(db, "momentum", 20, mint=f"X{i}")
-    _set(db, "momentum.size_usd", 20.0)
+    _set(db, "agents.sleeve_pct", 45.0)
+    _set(db, "agents.max_position_pct", 45.0)
+    db.start_night("PAPER", 117.66)
+    db.add_balance(117.66)
+    # one 45% ticket fills the sleeve; the next signal must not open
+    _open(db, "momentum", 52.94, mint="X0")
     src = FakeSources(_tok(), 1.05, _candles(high=1.0), _report())
     assert asyncio.run(S.MarketAgents(db, cfg, FakeBus(), src).cycle())["bought"] == 0
 
@@ -372,6 +381,10 @@ def test_cash_cap_blocks_when_sleeves_sum_over_100pct(db, cfg):
 
 def test_momentum_open_uses_shared_market_stop_basis(db, cfg):
     _set(db, "dip.enabled", False)
+    _set(db, "agents.sleeve_pct", 100.0)
+    _set(db, "agents.max_position_pct", 45.0)
+    db.start_night("PAPER", 117.66)
+    db.add_balance(117.66)
     _set(db, "risk.stop_basis", "market")
     cfg.set("risk.stop_pct", "1", who="test")
     src = FakeSources(_tok(), 1.05, _candles(high=1.0), _report())
@@ -401,3 +414,14 @@ def test_sniper_sleeve_100pct_and_40pct_cap_covers_ticket_at_150(db, cfg):
     assert S.sleeve_check(db, cfg, "sniper", 47.50, 110.0) is not None  # 40% of 110 = 44
     # a single position still cannot take the whole stack
     assert S.sleeve_check(db, cfg, "sniper", 70.0, 150.18) is not None
+
+
+def test_45pct_cap_clears_min_ticket_at_current_stack(db, cfg):
+    _set(db, "agents.sleeve_pct", 100.0)
+    _set(db, "agents.max_position_pct", 45.0)
+    # 40% of $117.66 = $47.06, under the $47.50 ticket; 45% = $52.94 clears it
+    assert S.position_size(117.66, cfg) == 52.94
+    assert S.sleeve_check(db, cfg, "momentum", 52.94, 117.66) is None
+    assert S.sleeve_check(db, cfg, "quiet", 52.94, 117.66) is None
+    _set(db, "agents.max_position_pct", 40.0)
+    assert S.position_size(117.66, cfg) is None

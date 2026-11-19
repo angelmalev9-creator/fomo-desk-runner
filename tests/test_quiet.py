@@ -46,13 +46,16 @@ def _report(pool="POOL1"):
 
 def test_defaults_without_kv(cfg):
     assert S.setting(cfg, "quiet.enabled") is True
-    assert S.setting(cfg, "quiet.max_noise_pct") == 1.2
-    assert S.setting(cfg, "quiet.vol_x") == 2.0
-    assert S.setting(cfg, "quiet.min_vol30_usd") == 5000.0
+    assert S.setting(cfg, "quiet.max_noise_pct") == 1.5
+    assert S.setting(cfg, "quiet.vol_x") == 1.5
+    assert S.setting(cfg, "quiet.min_vol30_usd") == 3750.0
     assert S.setting(cfg, "quiet.lookback_min") == 30
-    assert S.setting(cfg, "quiet.min_age_min") == 30
-    assert S.setting(cfg, "quiet.max_per_hour") == 2
+    assert S.setting(cfg, "quiet.min_age_min") == 22
+    assert S.setting(cfg, "quiet.max_per_hour") == 3
+    assert S.setting(cfg, "quiet.max_chase_pct") == 4.0
     assert S.setting(cfg, "quiet.tp_pct") == 0.0 and S.setting(cfg, "quiet.fade_exit") is False
+    assert S.setting(cfg, "agents.max_position_pct") == 45.0
+    assert S.setting(cfg, "agents.min_liquidity_usd") == 6000.0
     assert "quiet" in S.AGENT_ORDER and S.AGENT_LABEL["quiet"] == "Quiet Breakout"
     assert S.agent_of({"source": "quiet"}) == "quiet"
 
@@ -70,6 +73,15 @@ def test_signal_rejects_noise_volume_high_and_chase(cfg):
     assert S.quiet_signal(_tok(), 1.02, _calm(vol=50, brk_vol=200), cfg, T)[0] == "thin volume"
 
 
+def test_signal_accepts_loosened_noise_and_volume(cfg):
+    # 1.3% median range used to fail the 1.2% cap; 1.5% cap lets it through
+    why, note = S.quiet_signal(_tok(), 1.021, _calm(rng=1.3), cfg, T)
+    assert why is None and "broke the 30m high" in note
+    # 1.6x burst used to fail the 2.0x cap (avg 400, burst 640); 1.5x cap lets it through
+    why, note = S.quiet_signal(_tok(), 1.021, _calm(brk_vol=640), cfg, T)
+    assert why is None and "volume 1.6x" in note
+
+
 def test_signal_fails_closed(cfg):
     assert S.quiet_signal(_tok(), 1.02, [], cfg, T)[0] == "no candles (fail closed)"
     assert S.quiet_signal(_tok(), 1.02, _calm(n=20), cfg, T)[0] == "no candles (fail closed)"
@@ -81,8 +93,11 @@ def test_signal_fails_closed(cfg):
 
 
 def test_size_is_position_cap_and_respects_min_ticket(cfg):
-    assert S.quiet_size(148.0, cfg) is None  # default 26% of $148 = $38.48 < $47.50 min ticket
+    # 45% of $100 = $45 < $47.50 min ticket (the 40% dead zone at $117.66 is $47.06)
+    assert S.quiet_size(100.0, cfg) is None
+    assert S.position_size(117.66, cfg) == 52.94  # 45% of $117.66 clears the $47.50 ticket
     cfg.db.kv_set("setting.agents.max_position_pct", "40")
+    assert S.quiet_size(117.66, cfg) is None  # 40% of $117.66 = $47.06, the old dead zone
     assert S.quiet_size(147.98, cfg) == 59.19
     assert S.quiet_size(100.0, cfg) is None  # $40 < $47.50 min ticket
 

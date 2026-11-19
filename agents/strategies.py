@@ -5,7 +5,7 @@ Agents and their position `source`:
   Momentum   -> 'momentum' (NEW): volume breakout that breaks its 1h high
   Dip Hunter -> 'dip' (NEW): buys a sharp wick (~-30% off the recent high) that is bouncing
   Quiet Breakout -> 'quiet': only calm coins (median 1m range <= quiet.max_noise_pct, so a 1% stop is
-               not pure noise) that close above their 30m high on >= 2x volume
+               not pure noise) that close above their 30m high on a volume burst
   Whale Tail -> 'copy': copywatch on the four winnable FOMO traders
 
 Each agent trades only inside its own sleeve (default 25% of the PAPER stack); one agent's stop
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -46,7 +47,7 @@ AGENT_LABEL = {"sniper": "Sniper", "momentum": "Momentum", "dip": "Dip Hunter", 
 AGENT_SUB = {"sniper": "fresh migrations", "momentum": "volume breakouts", "dip": "−30% wicks",
              "quiet": "calm breakouts", "whale": "smart wallets"}
 MARKET_AGENTS = ("momentum", "dip", "quiet")  # agents fed by MarketAgents.cycle()
-QUIET_MAX_CHASE_PCT = 3.0  # live price may be at most this far above the signal candle close
+QUIET_MAX_CHASE_PCT = 4.0  # fallback; live value is setting quiet.max_chase_pct
 QUIET_MIGRATION_POOL = 50  # recent migrations (age >= quiet.min_age_min, <= 16 h) added to the universe
 QUIET_MIGRATION_MAX_AGE_H = 16
 
@@ -81,11 +82,11 @@ DEFAULTS: dict[str, Any] = {
     # sleeves (all four agents)
     "agents.sleeves_enabled": True,
     "agents.sleeve_pct": 25.0,  # share of the PAPER stack each agent may have open
-    "agents.max_position_pct": 26.0,  # hard cap for any single position, % of stack
+    "agents.max_position_pct": 45.0,  # hard cap for any single position, % of stack
     # shared market loop for Momentum + Dip Hunter
     "agents.enabled": True,
     "agents.poll_s": 60,
-    "agents.min_liquidity_usd": 8000.0,  # same floor as the scanner
+    "agents.min_liquidity_usd": 6000.0,  # same floor as the scanner
     "agents.max_mcap_usd": 300_000_000.0,
     "agents.max_top10_pct": 30.0,  # Jupiter audit.topHoldersPercentage; missing -> skip
     "agents.max_dev_pct": 5.0,  # RugCheck creatorBalance / supply; missing -> skip
@@ -127,12 +128,13 @@ DEFAULTS: dict[str, Any] = {
     # Quiet Breakout (backtest candidate C, /workspace/strat): desk exits only, no TP / fade
     "quiet.enabled": True,
     "milky.log_enabled": True,  # video setups: record only, never trades
-    "quiet.max_noise_pct": 1.2,  # median (high-low)/open of the last 30 1m candles, %
-    "quiet.vol_x": 2.0,  # breakout candle volume vs the prior lookback average
-    "quiet.min_vol30_usd": 5000.0,  # traded in the last 30 candles
+    "quiet.max_noise_pct": 1.5,  # median (high-low)/open of the last 30 1m candles, %
+    "quiet.vol_x": 1.5,  # breakout candle volume vs the prior lookback average
+    "quiet.min_vol30_usd": 3750.0,  # traded in the last 30 candles
     "quiet.lookback_min": 30,  # breakout above the high of this many prior candles
-    "quiet.min_age_min": 30,
-    "quiet.max_per_hour": 2,
+    "quiet.min_age_min": 22,
+    "quiet.max_per_hour": 3,
+    "quiet.max_chase_pct": 4.0,  # live price may be at most this far above the signal candle close
     "quiet.tp_pct": 0.0,
     "quiet.fade_exit": False,
     "quiet.fade_ratio": 0.30,
@@ -394,18 +396,28 @@ def quiet_signal(tok: dict, price: float | None, candles: list[list[float]], cfg
     vol30 = sum(c[5] for c in done[-30:])
     if vol30 < float(setting(cfg, "quiet.min_vol30_usd")):
         return "thin volume", ""
-    if sig[4] > 0 and price > sig[4] * (1 + QUIET_MAX_CHASE_PCT / 100.0):
+    chase = float(setting(cfg, "quiet.max_chase_pct") or QUIET_MAX_CHASE_PCT)
+    if sig[4] > 0 and price > sig[4] * (1 + chase / 100.0):
         return f"ran away +{(price / sig[4] - 1) * 100:.0f}% (no chase)", ""
     return None, f"broke the {look}m high · noise {noise:.1f}% · volume {spike:.1f}x"
 
 
-def quiet_size(stack: float, cfg) -> float | None:
-    """Position size for Quiet Breakout: agents.max_position_pct of the stack; None if below the min ticket."""
-    size = float(stack) * float(setting(cfg, "agents.max_position_pct")) / 100.0
+def position_size(stack: float, cfg) -> float | None:
+    """Position size for Quiet/Momentum: agents.max_position_pct of the stack; None if below the min ticket.
+
+    Floored to cents so the rounded ticket never exceeds the cap (sleeve_check is strict).
+    """
+    cap = float(stack) * float(setting(cfg, "agents.max_position_pct")) / 100.0
+    size = math.floor(cap * 100.0 + 1e-9) / 100.0
     min_ticket = float(cfg.get("executor.min_ticket_usd") or 47.5)
     if size + 1e-9 < min_ticket:
         return None
-    return round(size, 2)
+    return size
+
+
+def quiet_size(stack: float, cfg) -> float | None:
+    """Alias for position_size (Quiet Breakout tests and call sites)."""
+    return position_size(stack, cfg)
 
 
 def rug_check(tok: dict, report: dict | None, pool: str | None, cfg) -> tuple[str | None, str]:
@@ -669,8 +681,8 @@ class MarketAgents:
                 self._log_skip(agent, tok, bad)
                 note_last(agent, tok, "skip", bad)
                 continue
-            if agent == "quiet":
-                qs = quiet_size(session.current_stack(db, cfg), cfg)
+            if agent in ("quiet", "momentum"):
+                qs = position_size(session.current_stack(db, cfg), cfg)
                 if qs is None:
                     self._log_skip(agent, tok, "below min ticket")
                     note_last(agent, tok, "skip", "below min ticket")

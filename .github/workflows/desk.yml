@@ -52,6 +52,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Restore desk.db from private state gist
         run: python ci/state.py restore
+      - name: Apply PAPER opportunity policy (size 45%, looser Quiet, Momentum on)
+        run: python ci/apply_paper_policy.py
       - name: Run PAPER desk (stop at 5h45, then self-dispatch)
         run: python ci/run_desk.py
       - name: Final checkpoint
